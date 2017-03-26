@@ -11,7 +11,7 @@
 #include <Encoder.h>
 
 #define ACCELERATION 1.2
-#define DECELERATION .9999
+#define DECELERATION .9997
 #define MAX_ACCELERATION 100000
 
 #define FREQUENCY_MAX 50000000
@@ -27,6 +27,7 @@ Encoder myEnc(2, 3);
 
 double acceleration = 1.0;
 uint32_t frequency;
+int8_t encoderDirection;
 
 void setup() {
   int error;
@@ -92,13 +93,19 @@ void loop() {
   }
   
   if ( encoderValue != 0 ) {
+    if (encoderValue != encoderDirection) {
+      // reset acceleration when changing direction
+      //acceleration *= 0.5;
+    }
     frequency += encoderValue * int32_t(acceleration);
     if (frequency > FREQUENCY_MAX) {
       frequency = (FREQUENCY_MAX + encoderValue * int32_t(acceleration)) % FREQUENCY_MAX;
     }
 
     setFrequency(frequency);
-    
+
+    // -1 or +1
+    encoderDirection = encoderValue;
 #ifdef DEBUG
   
     Serial.print("Acceleration: ");
@@ -112,7 +119,9 @@ void loop() {
     Serial.println("");
   
 #endif
+  
   }
+  
   acceleration *= encoderValue == 0 ? DECELERATION : ACCELERATION;
   if (acceleration < 1) {
     acceleration = 1;
@@ -120,6 +129,7 @@ void loop() {
     acceleration = MAX_ACCELERATION;
   }
 
+  
 }
 
 #define Hz(f) ((uint16_t)(f % 1000))
