@@ -27,7 +27,9 @@
   Serial.print("\tLoops: ");\
   Serial.print(timer);\
   Serial.print("\t");\
-  Serial.print(timerSmooth);\
+  Serial.print(uint32_t(timerSmooth) / 1000);\
+  Serial.print("\tRPM ");\
+  Serial.print(int(60 * double(1000000.) / (20 * timerSmooth)));\
   Serial.print("\n");\
 }
 #endif
@@ -42,6 +44,7 @@ double acceleration = 1.0;
 uint32_t frequency = 440;
 uint32_t timer = QUIESCENCE_MAX;
 double timerSmooth = QUIESCENCE_MAX;
+unsigned long last_us  = micros();
 
 void setup() {
   int error;
@@ -86,11 +89,27 @@ void setFrequency(uint32_t f) {
   DDS.setfreq(f, 0);
 }
 
+inline double calculate_acceleration(double timerSmooth) {
+    //double acceleration = double(100000.0) / pow(timerSmooth / 100., 7);
+    //double acceleration = double(2142835.0) / timerSmooth - 7142;
+    //double acceleration = double(3333300.0) / (timerSmooth / 1000) - 33332;
+    double rate = double(1000.0) / timerSmooth;
+    double rpm = 60 * double(1000000.) / (20 * timerSmooth);
+    double acceleration = exp(0.000996455 * pow(rpm, 2) - 0.016707 * rpm + 0.13860); 
+    
+    if (acceleration < 1) {
+      acceleration = 1;
+    } else if (acceleration > MAX_ACCELERATION) {
+      acceleration = MAX_ACCELERATION;
+    }
+    return acceleration;
+}
+
 void loop() {
   int32_t encoderValue;
 
   // increment timer; avoid overflows
-  timer = timer >= QUIESCENCE_MAX ? QUIESCENCE_MAX : timer + 1;
+  timer = micros() - last_us;
   
   encoderValue = FrequencyEncoder.read();
   FrequencyEncoder.write(0);
@@ -102,24 +121,23 @@ void loop() {
   }
 
   // encoder debouncing; ignore inputs for 10% of the moving average inter-input time
+  if (encoderValue != 0) {
+      timerSmooth = .1 * timer + (1-.1) * timerSmooth;
+      last_us = micros();
+  }
+  
   if (timer >= timerSmooth / 10 || timer >= QUIESCENCE_MAX) {
       
     // base acceleration on the speed of turning, as determined by debounced
     // inter-encoder-input timings
-    acceleration = double(100000.0) / pow(timerSmooth / 100., 7);
-    if (acceleration < 1) {
-      acceleration = 1;
-    } else if (acceleration > MAX_ACCELERATION) {
-      acceleration = MAX_ACCELERATION;
-    }
+    acceleration = calculate_acceleration(timerSmooth);
     
     if (encoderValue != 0) {
-      timerSmooth = .2 * timer + (1-.2) * timerSmooth;
 #ifdef DEBUG
       PRINT_DEBUG();
 #endif
-      timer = 0;
-  
+      //timer = 0;
+      
       frequency += encoderValue * int32_t(acceleration);
   
       if (frequency > FREQUENCY_MAX) {
