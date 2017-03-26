@@ -11,8 +11,9 @@
 #include <Encoder.h>
 
 #define ACCELERATION 1.2
-#define DECELERATION .9997
+#define DECELERATION .99
 #define MAX_ACCELERATION 100000
+#define QUIESCENCE_MAX 2500
 
 #define FREQUENCY_MAX 50000000
 
@@ -28,7 +29,6 @@ Encoder myEnc(2, 3);
 double acceleration = 1.0;
 uint32_t frequency;
 int8_t encoderDirection;
-int32_t quiescenceTimeout = 0;
 
 void setup() {
   int error;
@@ -80,37 +80,32 @@ void setFrequency(uint32_t f) {
   DDS.setfreq(f, 0);
 }
 
-uint32_t timer = 0;
-double timerSmooth = 0;
+uint32_t timer = QUIESCENCE_MAX;
+double timerSmooth = QUIESCENCE_MAX;
 void loop() {
   int32_t encoderValue;
-  int32_t qt = quiescenceTimeout;
   timer++;
-  
-  
-  if (quiescenceTimeout > 0) {
-    quiescenceTimeout--;
-    //return;
-  }
   
   encoderValue = myEnc.read();
   myEnc.write(0);
 
-  if (encoderValue != 0 )
-  Serial.println(encoderValue);
+  //if (encoderValue != 0 )
+  //Serial.println(encoderValue);
 
   if (encoderValue > 1 || encoderValue < -1) {
     encoderValue = 0;
   }
-  
-  if ( encoderValue != 0 && timer > timerSmooth / 10) {
-    
-    quiescenceTimeout = int32_t(timerSmooth / 10.);
-    timerSmooth = .3 * timer + (1-.3) * timerSmooth;
+
+  // encoder debouncing; ignore inputs for 10% of the moving average inter-input time
+  if (timer < timerSmooth / 10 && timer < QUIESCENCE_MAX) {
+    return;
+  }
+  if ( encoderValue != 0) {
+    timerSmooth = .2 * timer + (1-.2) * timerSmooth;
     
     if (encoderValue != encoderDirection) {
       // reset acceleration when changing direction
-      //acceleration *= 0.5;
+      //acceleration *= .1;
     }
     frequency += encoderValue * int32_t(acceleration);
     if (frequency > FREQUENCY_MAX) {
@@ -125,12 +120,13 @@ void loop() {
   
     Serial.print("Accel: ");
     Serial.print(acceleration);
+    Serial.print("\tEnc: ");
+    Serial.print(encoderValue);
     Serial.print("\tLoops: ");
     Serial.print(timer);
     Serial.print("\t");
     Serial.print(timerSmooth);
-    Serial.print("\tquiescenceTimeout: ");
-    Serial.print(qt);
+    Serial.print("\n");
                 
     /*
     Serial.print(encoderValue);
@@ -142,15 +138,25 @@ void loop() {
     */
 #endif
     timer = 0;
+
+
   }
-  
-  acceleration *= encoderValue == 0 ? DECELERATION : ACCELERATION;
+  //acceleration *= encoderValue == 0 ? DECELERATION : ACCELERATION;
+  double ts = timerSmooth / 100., 
+    ts3 = ts * ts * ts;
+  acceleration = double(100000.0) / (ts3 * ts3 * ts);
+  if (acceleration > 1) {
+    //Serial.print("Accleration: ");
+    //Serial.print(acceleration);
+    //Serial.print("\n");
+  }
   if (acceleration < 1) {
     acceleration = 1;
   } else if (acceleration > MAX_ACCELERATION) {
     acceleration = MAX_ACCELERATION;
   }
-
+  
+  
   
 }
 
