@@ -122,7 +122,7 @@ void loop() {
 
   // encoder debouncing; ignore inputs for 10% of the moving average inter-input time
   if (encoderValue != 0) {
-      timerSmooth = .1 * timer + (1-.1) * timerSmooth;
+      timerSmooth = 0.05 * timer + (0.95) * timerSmooth;
       last_us = micros();
   }
   
