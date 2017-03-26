@@ -28,6 +28,7 @@ Encoder myEnc(2, 3);
 double acceleration = 1.0;
 uint32_t frequency;
 int8_t encoderDirection;
+int32_t quiescenceTimeout = 0;
 
 void setup() {
   int error;
@@ -79,9 +80,19 @@ void setFrequency(uint32_t f) {
   DDS.setfreq(f, 0);
 }
 
+uint32_t timer = 0;
+double timerSmooth = 0;
 void loop() {
   int32_t encoderValue;
-
+  int32_t qt = quiescenceTimeout;
+  timer++;
+  
+  
+  if (quiescenceTimeout > 0) {
+    quiescenceTimeout--;
+    //return;
+  }
+  
   encoderValue = myEnc.read();
   myEnc.write(0);
 
@@ -92,7 +103,11 @@ void loop() {
     encoderValue = 0;
   }
   
-  if ( encoderValue != 0 ) {
+  if ( encoderValue != 0 && timer > timerSmooth / 10) {
+    
+    quiescenceTimeout = int32_t(timerSmooth / 10.);
+    timerSmooth = .3 * timer + (1-.3) * timerSmooth;
+    
     if (encoderValue != encoderDirection) {
       // reset acceleration when changing direction
       //acceleration *= 0.5;
@@ -108,18 +123,25 @@ void loop() {
     encoderDirection = encoderValue;
 #ifdef DEBUG
   
-    Serial.print("Acceleration: ");
+    Serial.print("Accel: ");
     Serial.print(acceleration);
-    Serial.print("\tnewValue (raw): ");
+    Serial.print("\tLoops: ");
+    Serial.print(timer);
+    Serial.print("\t");
+    Serial.print(timerSmooth);
+    Serial.print("\tquiescenceTimeout: ");
+    Serial.print(qt);
+                
+    /*
     Serial.print(encoderValue);
     Serial.print("\tnewValue (accelerated): ");
     Serial.print(encoderValue * int32_t(acceleration));
     Serial.print("\tfrequency: ");
     Serial.print(frequency);
     Serial.println("");
-  
+    */
 #endif
-  
+    timer = 0;
   }
   
   acceleration *= encoderValue == 0 ? DECELERATION : ACCELERATION;
