@@ -1,5 +1,6 @@
 #include <Wire.h>
 #include <LiquidCrystal_PCF8574.h>
+#include <AD9850.h>
 
 #define DEBUG
 
@@ -15,18 +16,17 @@
 
 #define FREQUENCY_MAX 50000000
 
+#define W_CLK_PIN 5
+#define FQ_UD_PIN 6
+#define DATA_PIN 7
+#define RESET_PIN 8
+#define DDS_CLOCK_FREQ 125000000
+
 LiquidCrystal_PCF8574 lcd(0x27);  // set the LCD address to 0x27 for a 16 chars and 2 line display
 Encoder myEnc(2, 3);
 
-//ClickEncoder *encoder;
-int32_t newValue;
 double acceleration = 1.0;
-uint32_t value;
-
-void timerIsr() {
-  //encoder->service();
-}
-
+uint32_t frequency;
 
 void setup() {
   int error;
@@ -34,8 +34,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("LCD...");
 
-  value = 0;
-  newValue = 0;
+  frequency = 440;
 
   //encoder = new ClickEncoder(2, 3);
   //encoder->setAccelerationEnabled(true);
@@ -64,42 +63,57 @@ void setup() {
   lcd.home();
   lcd.clear();
   lcd.print(" AD9850 DDS VFO");
+
+  DDS.begin(W_CLK_PIN, FQ_UD_PIN, DATA_PIN, RESET_PIN);
+  DDS.calibrate(DDS_CLOCK_FREQ);
+
+  setFrequency(frequency);
+}
+
+void setFrequency(uint32_t f) {
+  char buf[31];
+  format_frequency(buf, 31, f);
+  lcd.setCursor(0,1);
+  lcd.write(buf);
+  DDS.setfreq(f, 0);
 }
 
 void loop() {
-  char buf[31];
-  
-  newValue = myEnc.read();
+  int32_t encoderValue;
+
+  encoderValue = myEnc.read();
   myEnc.write(0);
 
-  if (newValue > 1 || newValue < -1) {
-    newValue = 0;
+  if (encoderValue != 0 )
+  Serial.println(encoderValue);
+
+  if (encoderValue > 1 || encoderValue < -1) {
+    encoderValue = 0;
   }
   
-  if ( newValue != 0 ) { //newValue != value) {
-    value += newValue * int32_t(acceleration);
-    if (value > FREQUENCY_MAX) {
-      value = (FREQUENCY_MAX + newValue * int32_t(acceleration)) % FREQUENCY_MAX;
+  if ( encoderValue != 0 ) {
+    frequency += encoderValue * int32_t(acceleration);
+    if (frequency > FREQUENCY_MAX) {
+      frequency = (FREQUENCY_MAX + encoderValue * int32_t(acceleration)) % FREQUENCY_MAX;
     }
-    format_frequency(buf, 31, value);
-    lcd.setCursor(0,1);
-    lcd.write(buf);
 
+    setFrequency(frequency);
+    
 #ifdef DEBUG
   
     Serial.print("Acceleration: ");
     Serial.print(acceleration);
     Serial.print("\tnewValue (raw): ");
-    Serial.print(newValue);
+    Serial.print(encoderValue);
     Serial.print("\tnewValue (accelerated): ");
-    Serial.print(newValue * int32_t(acceleration));
-    Serial.print("\tvalue: ");
-    Serial.print(value);
+    Serial.print(encoderValue * int32_t(acceleration));
+    Serial.print("\tfrequency: ");
+    Serial.print(frequency);
     Serial.println("");
   
 #endif
   }
-  acceleration *= newValue == 0 ? DECELERATION : ACCELERATION;
+  acceleration *= encoderValue == 0 ? DECELERATION : ACCELERATION;
   if (acceleration < 1) {
     acceleration = 1;
   } else if (acceleration > MAX_ACCELERATION) {
